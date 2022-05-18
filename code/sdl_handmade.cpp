@@ -1,29 +1,32 @@
 
 #include <SDL2/SDL.h>
 
-/**
- * @return true, if quit was signaled
- */
+#define internal static
+#define local_persist static
+#define global_variable static
 
-bool HandleEvent(SDL_Event *Event) {
-    bool ShouldQuit = false;
+global_variable bool Running;
+
+void HandleEvent(SDL_Event *Event) {
     switch (Event->type) {
         case SDL_QUIT: {
-            ShouldQuit = true;
+            Running = false;
         }
             break;
         case SDL_WINDOWEVENT: {
             switch (Event->window.event) {
                 case SDL_WINDOWEVENT_RESIZED: {
                     printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n", Event->window.data1, Event->window.data2);
-                } break;
+                }
+                    break;
                 case SDL_WINDOWEVENT_CLOSE: {
-                    ShouldQuit = true;
-                } break;
+                    Running = false;
+                }
+                    break;
                 case SDL_WINDOWEVENT_EXPOSED: {
                     SDL_Window *Window = SDL_GetWindowFromID(Event->window.windowID);
                     SDL_Renderer *Renderer = SDL_GetRenderer(Window);
-                    static bool IsWhite = true;
+                    local_persist bool IsWhite = true;
                     if (IsWhite) {
                         SDL_SetRenderDrawColor(Renderer, 255, 255, 255, 255);
                         IsWhite = false;
@@ -33,68 +36,55 @@ bool HandleEvent(SDL_Event *Event) {
                     }
                     SDL_RenderClear(Renderer);
                     SDL_RenderPresent(Renderer);
-                } break;
+                }
+                    break;
             }
         }
             break;
 
     }
-    return ShouldQuit;
-}
-
-void ShowMessageBox() {
-    SDL_ShowSimpleMessageBox(
-            SDL_MESSAGEBOX_INFORMATION,
-            "Handmade Hero",
-            "This is Handmade Hero",
-            nullptr);
 }
 
 int main() {
+    if (SDL_Init(SDL_INIT_VIDEO) == 0) {
+        SDL_Window *Window;
+        Window = SDL_CreateWindow(
+                "Handmade Hero",
+                SDL_WINDOWPOS_UNDEFINED,
+                SDL_WINDOWPOS_UNDEFINED,
+                640,
+                480,
+                SDL_WINDOW_RESIZABLE
+        );
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        // TODO(kjaa): handle failure
-    }
+        if (Window) {
+            int autodetect_driver = -1;
+            int renderer_flags = 0;
+            SDL_Renderer *Renderer = SDL_CreateRenderer(
+                    Window,
+                    autodetect_driver,
+                    renderer_flags
+            );
 
-
-    SDL_Window *Window;
-    Window = SDL_CreateWindow(
-            "Handmade Hero",
-            SDL_WINDOWPOS_UNDEFINED,
-            SDL_WINDOWPOS_UNDEFINED,
-            640,
-            480,
-            SDL_WINDOW_RESIZABLE
-    );
-
-    if (!Window) {
-        // TODO(kjaa): handle failure
-    }
-
-    int autodetect_driver = -1;
-    int renderer_flags = 0;
-    SDL_Renderer *Renderer = SDL_CreateRenderer(
-            Window,
-            autodetect_driver,
-            renderer_flags
-    );
-
-    if (!Renderer) {
-        // TODO(kjaa): handle failure
-    }
-
-    for (;;) {
-        SDL_Event Event;
-        if (SDL_WaitEvent(&Event) == 0) {
-            // TODO(kjaa): handle failure
-            break;
+            if (Renderer) {
+                Running = true;
+                while (Running) {
+                    SDL_Event Event;
+                    if (SDL_WaitEvent(&Event) == 0) {
+                        // TODO(kjaa): handle failure
+                        break;
+                    }
+                    HandleEvent(&Event);
+                }
+            } else {
+                //TODO(kjaa): Handle CreateRenderer failure
+            }
+        } else {
+            //TODO(kjaa): Handle CreateWindow failure
         }
-
-        if (HandleEvent(&Event)) {
-            break;
-        }
+        SDL_Quit();
+    } else {
+        //TODO(kjaa): Handle SDL_Init failure
     }
-    
-    SDL_Quit();
     return 0;
 }
