@@ -6,65 +6,85 @@
 #define global_variable static
 
 global_variable bool Running;
+global_variable SDL_Texture *Texture;
+global_variable int TextureWidth;
+global_variable void *Pixels;
 
-void HandleEvent(SDL_Event *Event) {
+internal void
+ResizeTexture(uint WindowID, int Width, int Height) {
+    //TODO(kjaa): Maybe don't free first, free after realloc succeeds.
+    if (Texture) {
+        SDL_DestroyTexture(Texture);
+    }
+    if (Pixels) {
+        free(Pixels);
+    }
+    SDL_Window *Window = SDL_GetWindowFromID(WindowID);
+    SDL_Renderer *Renderer = SDL_GetRenderer(Window);
+    Texture = SDL_CreateTexture(
+            Renderer,
+            SDL_PIXELFORMAT_ARGB8888,
+            SDL_TEXTUREACCESS_STREAMING,
+            Width,
+            Height
+    );
+    TextureWidth = Width;
+    Pixels = malloc(Width * Height * 4);
+}
+
+internal void
+UpdateWindow(uint WindowID) {
+    SDL_Window *Window = SDL_GetWindowFromID(WindowID);
+    SDL_Renderer *Renderer = SDL_GetRenderer(Window);
+
+    SDL_UpdateTexture(Texture, nullptr, Pixels, TextureWidth * 4);
+    SDL_RenderCopy(Renderer, Texture, nullptr, nullptr);
+    SDL_RenderPresent(Renderer);
+}
+
+internal void
+HandleEvent(SDL_Event *Event) {
     switch (Event->type) {
         case SDL_QUIT: {
             Running = false;
-        }
             break;
+        }
         case SDL_WINDOWEVENT: {
             switch (Event->window.event) {
                 case SDL_WINDOWEVENT_RESIZED: {
+                    ResizeTexture(Event->window.windowID, Event->window.data1, Event->window.data2);
                     printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n", Event->window.data1, Event->window.data2);
-                }
                     break;
+                }
                 case SDL_WINDOWEVENT_CLOSE: {
                     Running = false;
-                }
                     break;
+                }
                 case SDL_WINDOWEVENT_EXPOSED: {
-                    SDL_Window *Window = SDL_GetWindowFromID(Event->window.windowID);
-                    SDL_Renderer *Renderer = SDL_GetRenderer(Window);
-                    local_persist bool IsWhite = true;
-                    if (IsWhite) {
-                        SDL_SetRenderDrawColor(Renderer, 255, 255, 255, 255);
-                        IsWhite = false;
-                    } else {
-                        SDL_SetRenderDrawColor(Renderer, 0, 0, 0, 255);
-                        IsWhite = true;
-                    }
-                    SDL_RenderClear(Renderer);
-                    SDL_RenderPresent(Renderer);
-                }
+                    UpdateWindow(Event->window.windowID);
                     break;
+                }
             }
-        }
             break;
-
+        }
     }
 }
 
 int main() {
     if (SDL_Init(SDL_INIT_VIDEO) == 0) {
-        SDL_Window *Window;
-        Window = SDL_CreateWindow(
+        SDL_Window *Window = SDL_CreateWindow(
                 "Handmade Hero",
                 SDL_WINDOWPOS_UNDEFINED,
                 SDL_WINDOWPOS_UNDEFINED,
                 640,
                 480,
-                SDL_WINDOW_RESIZABLE
-        );
+                SDL_WINDOW_RESIZABLE);
 
         if (Window) {
-            int autodetect_driver = -1;
-            int renderer_flags = 0;
             SDL_Renderer *Renderer = SDL_CreateRenderer(
                     Window,
-                    autodetect_driver,
-                    renderer_flags
-            );
+                    -1,
+                    0);
 
             if (Renderer) {
                 Running = true;
