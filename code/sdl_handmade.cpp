@@ -123,6 +123,7 @@ SDLHandleEvent(SDL_Event *Event)
             Running = false;
             break;
         }
+
         case SDL_WINDOWEVENT:
         {
             switch (Event->window.event)
@@ -132,11 +133,13 @@ SDLHandleEvent(SDL_Event *Event)
                     printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n", Event->window.data1, Event->window.data2);
                     break;
                 }
+
                 case SDL_WINDOWEVENT_CLOSE:
                 {
                     Running = false;
                     break;
                 }
+
                 case SDL_WINDOWEVENT_EXPOSED:
                 {
                     printf("SDL_WINDOWEVENT_EXPOSED\n");
