@@ -21,9 +21,9 @@ struct offscreen_SDL_buffer
 {
     // NOTE(casey): Pixels are always 32-bits wide, Memory Order BB GG RR XX
     SDL_Texture *Texture;
+    void *Memory;
     int Width;
     int Height;
-    void *Memory;
     int Pitch;
 };
 
@@ -38,23 +38,24 @@ global_variable bool Running;
 global_variable offscreen_SDL_buffer GlobalBackbuffer;
 
 internal sdl_window_dimension
-SDLGetWindowSize(SDL_Window *Window) {
-    sdl_window_dimension Result = { };
+SDLGetWindowSize(SDL_Window *Window)
+{
+    sdl_window_dimension Result = {};
     SDL_GetWindowSize(Window, &Result.Width, &Result.Height);
     return Result;
 }
 
 internal void
-RenderWeirdGradient(offscreen_SDL_buffer Buffer, int XOffset, int YOffset)
+RenderWeirdGradient(offscreen_SDL_buffer *Buffer, int XOffset, int YOffset)
 {
-    uint8 *Row = (uint8 *)Buffer.Memory;
+    uint8 *Row = (uint8 *) Buffer->Memory;
     for (int Y = 0;
-         Y < Buffer.Height;
+         Y < Buffer->Height;
          Y++)
     {
-        uint32 *Pixel = (uint32 *)Row;
+        uint32 *Pixel = (uint32 *) Row;
         for (int X = 0;
-             X < Buffer.Width;
+             X < Buffer->Width;
              X++)
         {
             uint8 Red = 0;
@@ -64,12 +65,12 @@ RenderWeirdGradient(offscreen_SDL_buffer Buffer, int XOffset, int YOffset)
             Pixel++;
         }
 
-        Row += Buffer.Pitch;
+        Row += Buffer->Pitch;
     }
 }
 
 internal void
-SDLCopyBufferToRenderer(offscreen_SDL_buffer *Buffer, SDL_Renderer* Renderer)
+SDLCopyBufferToRenderer(offscreen_SDL_buffer *Buffer, SDL_Renderer *Renderer)
 {
     SDL_UpdateTexture(Buffer->Texture, nullptr, Buffer->Memory, Buffer->Width * 4);
     SDL_RenderCopy(Renderer, Buffer->Texture, nullptr, nullptr);
@@ -105,13 +106,12 @@ SDLResizeBuffer(offscreen_SDL_buffer *Buffer, uint WindowID, int NewWidth, int N
     );
 
     Buffer->Memory = mmap(nullptr,
-                        Buffer->Pitch * Buffer->Height,
-                        PROT_READ | PROT_WRITE,
-                        MAP_ANONYMOUS | MAP_PRIVATE,
-                        -1,
-                        0);
+                          Buffer->Pitch * Buffer->Height,
+                          PROT_READ | PROT_WRITE,
+                          MAP_ANONYMOUS | MAP_PRIVATE,
+                          -1,
+                          0);
 }
-
 
 
 internal void
@@ -154,22 +154,65 @@ SDLHandleEvent(SDL_Event *Event)
         case SDL_KEYUP:
         {
             SDL_Keycode KeyCode = Event->key.keysym.sym;
-            bool WasDown = false;
-            if (Event->key.state == SDL_RELEASED) {
-                WasDown = true;
-            } else if (Event->key.repeat != 0) {
-                WasDown = true;
-            }
-            if (!WasDown && KeyCode == SDLK_w) {
-                printf("W\n");
+            bool WasDown = Event->key.state == SDL_RELEASED || Event->key.repeat != 0;
+            bool IsDown = Event->key.state == SDL_PRESSED;
+
+            if (WasDown != IsDown)
+            {
+                if (KeyCode == SDLK_w)
+                {
+                    printf("W: ");
+                    if (IsDown)
+                    {
+                        printf("IsDown ");
+                    }
+                    if (WasDown)
+                    {
+                        printf("WasDown ");
+                    }
+                    printf("\n");
+                }
+                else if (KeyCode == SDLK_a)
+                {
+                }
+                else if (KeyCode == SDLK_s)
+                {
+                }
+                else if (KeyCode == SDLK_d)
+                {
+                }
+                else if (KeyCode == SDLK_q)
+                {
+                }
+                else if (KeyCode == SDLK_e)
+                {
+                }
+                else if (KeyCode == SDLK_UP)
+                {
+                }
+                else if (KeyCode == SDLK_LEFT)
+                {
+                }
+                else if (KeyCode == SDLK_DOWN)
+                {
+                }
+                else if (KeyCode == SDLK_RIGHT)
+                {
+                }
+                else if (KeyCode == SDLK_ESCAPE)
+                {
+                    Running = false;
+                }
+                else if (KeyCode == SDLK_SPACE)
+                {
+                }
             }
         }
-
-
     }
 }
 
-void DynamicLoad() {
+void DynamicLoad()
+{
     void *LibHandle = dlopen("libSDL2.dylib", RTLD_NOW);
     void *ProcHandle = dlsym(LibHandle, "SDL_Init");
     dlclose(LibHandle);
@@ -216,7 +259,9 @@ int main()
                     if (!SDL_IsGameController(JoystickIndex))
                     {
                         continue;
-                    } else if (OpenControllers >= MAX_CONTROLLERS) {
+                    }
+                    else if (OpenControllers >= MAX_CONTROLLERS)
+                    {
                         break;
                     }
                     ControllerHandles[OpenControllers] = SDL_GameControllerOpen(JoystickIndex);
@@ -238,12 +283,13 @@ int main()
                     }
 
                     // TODO(casey): Should we poll this more frequently (kjaa: than the render loop...?)
-                    for(int ControllerIndex = 0;
-                            ControllerIndex < OpenControllers;
-                            ControllerIndex++)
+                    for (int ControllerIndex = 0;
+                         ControllerIndex < OpenControllers;
+                         ControllerIndex++)
                     {
                         SDL_GameController *Controller = ControllerHandles[ControllerIndex];
-                        if (SDL_GameControllerGetAttached(Controller)) {
+                        if (SDL_GameControllerGetAttached(Controller))
+                        {
                             bool Up = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
                             bool Down = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
                             bool Left = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
@@ -254,8 +300,10 @@ int main()
                             bool BButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_B);
                             bool XButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_X);
                             bool YButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_Y);
-                            bool LeftShoulder = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-                            bool RightShoulder = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+                            bool LeftShoulder = SDL_GameControllerGetButton(Controller,
+                                                                            SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+                            bool RightShoulder = SDL_GameControllerGetButton(Controller,
+                                                                             SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
                             bool LeftStick = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_LEFTSTICK);
                             bool RightStick = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
                             bool XBoxButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_GUIDE);
@@ -263,36 +311,47 @@ int main()
                             int16 StickX = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTX);
                             int16 StickY = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTY);
 
-                            if (Up) {
+                            if (Up)
+                            {
                                 YOffset += 2;
-                            } else if (Down) {
+                            }
+                            else if (Down)
+                            {
                                 YOffset -= 2;
                             }
 
-                            if (Left) {
+                            if (Left)
+                            {
                                 XOffset += 2;
-                            } else if (Right) {
+                            }
+                            else if (Right)
+                            {
                                 XOffset -= 2;
                             }
-                        } else {
+                        }
+                        else
+                        {
                             // NOTE(casey): The controller is not available
                         };
                     }
 
-                    RenderWeirdGradient(GlobalBackbuffer, XOffset, YOffset);
+                    RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
                     SDLCopyBufferToRenderer(&GlobalBackbuffer, Renderer);
                     XOffset++;
                 }
-            } else
+            }
+            else
             {
                 //TODO(kjaa): Handle CreateRenderer failure
             }
-        } else
+        }
+        else
         {
             //TODO(kjaa): Handle CreateWindow failure
         }
         SDL_Quit();
-    } else
+    }
+    else
     {
         //TODO(kjaa): Handle SDL_Init failure
     }
