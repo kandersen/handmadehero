@@ -181,9 +181,8 @@ void DynamicLoad() {
 
 int main()
 {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC) == 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) == 0)
     {
-        SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT, "0");
         SDL_Window *Window = SDL_CreateWindow(
                 "Handmade Hero",
                 SDL_WINDOWPOS_UNDEFINED,
@@ -210,8 +209,6 @@ int main()
                 //   SDL_CONTROLLERDEVICEREMAPPED events in the event handler.
 #define MAX_CONTROLLERS 4
                 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
-                // TODO(kjaa): Rumble functionality is currently broken on SDL+macOS+XBox Controller
-                SDL_Haptic *RumbleHandles[MAX_CONTROLLERS] = { 0, 0, 0, 0};
                 int MaxJoysticks = SDL_NumJoysticks();
                 int OpenControllers = 0;
                 for (int JoystickIndex = 0; JoystickIndex < MaxJoysticks; JoystickIndex++)
@@ -224,15 +221,6 @@ int main()
                     }
                     ControllerHandles[OpenControllers] = SDL_GameControllerOpen(JoystickIndex);
                     SDL_Joystick *Joystick = SDL_GameControllerGetJoystick(ControllerHandles[OpenControllers]);
-                    RumbleHandles[OpenControllers] = SDL_HapticOpenFromJoystick(Joystick);
-
-
-                    int haptics = SDL_NumHaptics();
-                    if (SDL_HapticRumbleInit(RumbleHandles[OpenControllers]) != 0) {
-                        SDL_HapticClose(RumbleHandles[OpenControllers]);
-                        RumbleHandles[OpenControllers] = nullptr;
-                    }
-
                     OpenControllers++;
                 }
 
@@ -242,7 +230,7 @@ int main()
                 Running = true;
                 while (Running)
                 {
-                    //NOTE(kjaa): Investigate performance implications of passing Event by value instead of pointer.
+                    // NOTE(casey): Investigate performance implications of passing Event by value instead of pointer.
                     SDL_Event Event;
                     while (SDL_PollEvent(&Event))
                     {
@@ -286,11 +274,6 @@ int main()
                             } else if (Right) {
                                 XOffset -= 2;
                             }
-
-                            if (Left) {
-                                SDL_HapticRumblePlay(RumbleHandles[ControllerIndex], 0.5f, 2000);
-                            }
-
                         } else {
                             // NOTE(casey): The controller is not available
                         };
