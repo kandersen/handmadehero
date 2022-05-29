@@ -2,6 +2,10 @@
 #include <SDL.h>
 #include <sys/mman.h> // mmap/munmap
 #include <dlfcn.h> // dynamic load of libs: dlopen
+// TODO(kjaa): Implement sine ourselves
+#include <cmath> // sine
+
+#define Pi32 3.14159265358979f
 
 #define internal static
 #define local_persist static
@@ -19,6 +23,9 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
+typedef float_t real32;
+typedef double_t real64;
+
 struct offscreen_SDL_buffer
 {
     // NOTE(casey): Pixels are always 32-bits wide, Memory Order BB GG RR XX
@@ -35,6 +42,22 @@ struct sdl_window_dimension
     int Height;
 };
 
+struct sdl_sound_output {
+    SDL_AudioDeviceID DeviceID;
+    int SamplesPerSecond;
+    int BytesPerSample;
+    int LatencySampleCount;
+    int ToneHz;
+    real32 WavePeriod;
+    int16 ToneVolume;
+    real32 tSine;
+};
+
+internal void
+SetToneHerz(sdl_sound_output *SoundOutput, int ToneHz) {
+    SoundOutput->ToneHz = ToneHz;
+    SoundOutput->WavePeriod = (real32)SoundOutput->SamplesPerSecond / (real32)SoundOutput->ToneHz;
+}
 
 global_variable bool32 Running;
 global_variable bool32 SoundIsPlaying;
@@ -157,8 +180,8 @@ SDLHandleEvent(SDL_Event *Event)
         case SDL_KEYUP:
         {
             SDL_Keycode KeyCode = Event->key.keysym.sym;
-            bool WasDown = Event->key.state == SDL_RELEASED || Event->key.repeat != 0;
-            bool IsDown = Event->key.state == SDL_PRESSED;
+            bool32 WasDown = Event->key.state == SDL_RELEASED || Event->key.repeat != 0;
+            bool32 IsDown = Event->key.state == SDL_PRESSED;
 
             if (WasDown != IsDown)
             {
@@ -225,18 +248,16 @@ void DynamicLoad()
     SDL_UnloadObject(LibHandle);
 }
 
-internal SDL_AudioDeviceID
-SDLInitSDLAudio(int32 SamplesPerSecond)
+internal void
+SDLInitSDLAudio(sdl_sound_output *SoundOutput)
 {
     // TODO(kjaa): Error handling in... any of this.
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
     {
-
         SDL_AudioSpec AudioSpecRequest = {}, AudioSpecReceive;
-        AudioSpecRequest.freq = SamplesPerSecond;
+        AudioSpecRequest.freq = SoundOutput->SamplesPerSecond;
         AudioSpecRequest.format = AUDIO_S16LSB;
         AudioSpecRequest.channels = 2;
-        AudioSpecRequest.samples = 0;
 
         SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
                 nullptr,
@@ -246,7 +267,7 @@ SDLInitSDLAudio(int32 SamplesPerSecond)
                 SDL_AUDIO_ALLOW_ANY_CHANGE);
 
         if (AudioDeviceID != 0 && AudioSpecReceive.format == AudioSpecRequest.format) {
-            return AudioDeviceID;
+            SoundOutput->DeviceID = AudioDeviceID;
         }
         else
         {
@@ -259,46 +280,39 @@ SDLInitSDLAudio(int32 SamplesPerSecond)
         // TODO(kjaa): Logging
         printf("Audio Init failed");
     }
-    return 0;
 }
 
+
 internal void
-WriteTone(SDL_AudioDeviceID AudioDeviceID) {
-    // TODO(kjaa): These are global state
-    int SamplesPerSecond = 48000;
-    int BytesPerSample = sizeof(int16) * 2;
+WriteTone(sdl_sound_output *SoundOutput) {
 
     // TODO(kjaa): Investigating doing _time_ sensitive write-ahead, instead of sample count.
-    int TargetQueueBytes = SamplesPerSecond * BytesPerSample;
-    int BytesToWrite = TargetQueueBytes - SDL_GetQueuedAudioSize(AudioDeviceID);
+    int TargetQueueBytes = SoundOutput->LatencySampleCount * SoundOutput->BytesPerSample;
+    uint32 BytesToWrite = TargetQueueBytes - SDL_GetQueuedAudioSize(SoundOutput->DeviceID);
 
     if (BytesToWrite)
     {
-        int ToneHz = 256;
-        int16 ToneVolume = 3000;
-        uint32 RunningSampleIndex = 0;
-        int SquareWavePeriod = SamplesPerSecond / ToneHz;
-        int HalfSquareWavePeriod = SquareWavePeriod / 2;
-
         void *SoundBuffer = malloc(BytesToWrite);
         int16 *SampleOut = (int16 *) SoundBuffer;
-        int SampleCount = BytesToWrite / BytesPerSample;
+        uint32 SampleCount = BytesToWrite / SoundOutput->BytesPerSample;
 
-        for (int SampleIndex = 0;
+        for (uint SampleIndex = 0;
              SampleIndex < SampleCount;
              ++SampleIndex)
         {
-            int16 Sample = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? ToneVolume : -ToneVolume;
+            SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
+            real32 SineValue = sinf(SoundOutput->tSine);
+            int16 Sample = (int16)(SineValue * (real32)SoundOutput->ToneVolume);
             *SampleOut++ = Sample;
             *SampleOut++ = Sample;
         }
 
-        SDL_QueueAudio(AudioDeviceID, SoundBuffer, BytesToWrite);
+        SDL_QueueAudio(SoundOutput->DeviceID, SoundBuffer, BytesToWrite);
         free(SoundBuffer);
 
         if (!SoundIsPlaying)
         {
-            SDL_PauseAudioDevice(AudioDeviceID, 0);
+            SDL_PauseAudioDevice(SoundOutput->DeviceID, 0);
             SoundIsPlaying = true;
         }
     }
@@ -320,7 +334,21 @@ int main()
         // TODO(kjaa): Move audio init after window init
         if (Window)
         {
-            SDL_AudioDeviceID AudioDevice = SDLInitSDLAudio(48000);
+
+            sdl_sound_output SoundOutput = {};
+            SoundOutput.SamplesPerSecond = 48000;
+            SoundOutput.BytesPerSample = sizeof(int16) * 2;
+            SoundOutput.ToneVolume = 3000;
+            // TODO(kjaa): Can this be dynamic instead of hardwired?
+            SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 10;
+            SetToneHerz(&SoundOutput, 256);
+
+            SDLInitSDLAudio(&SoundOutput);
+
+            if (SoundOutput.DeviceID == 0)
+            {
+                // TODO(kjaa): Sound Initialization error handling
+            }
 
             SDL_Renderer *Renderer = SDL_CreateRenderer(
                     Window,
@@ -351,12 +379,15 @@ int main()
                         break;
                     }
                     ControllerHandles[OpenControllers] = SDL_GameControllerOpen(JoystickIndex);
-                    SDL_Joystick *Joystick = SDL_GameControllerGetJoystick(ControllerHandles[OpenControllers]);
                     OpenControllers++;
                 }
 
+
+                SoundIsPlaying = false;
+
                 int XOffset = 0;
                 int YOffset = 0;
+
                 Running = true;
                 while (Running)
                 {
@@ -398,23 +429,10 @@ int main()
                             int16 StickX = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTX);
                             int16 StickY = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTY);
 
-                            if (Up)
-                            {
-                                YOffset += 2;
-                            }
-                            else if (Down)
-                            {
-                                YOffset -= 2;
-                            }
+                            XOffset += StickX / (4096 * 2);
+                            YOffset += StickY / (4096 * 2);
 
-                            if (Left)
-                            {
-                                XOffset += 2;
-                            }
-                            else if (Right)
-                            {
-                                XOffset -= 2;
-                            }
+                            SetToneHerz(&SoundOutput, 512 - (int)(256.0f*((real32)StickY / 30000.0f)));
                         }
                         else
                         {
@@ -422,10 +440,9 @@ int main()
                         };
                     }
 
-                    WriteTone(AudioDevice);
+                    WriteTone( &SoundOutput);
                     RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
                     SDLCopyBufferToRenderer(&GlobalBackbuffer, Renderer);
-                    XOffset++;
                 }
             }
             else
