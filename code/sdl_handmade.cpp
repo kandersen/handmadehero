@@ -1,7 +1,7 @@
 
 #include <SDL.h>
 #include <sys/mman.h> // mmap/munmap
-#include <dlfcn.h>
+#include <dlfcn.h> // dynamic load of libs: dlopen
 
 #define internal static
 #define local_persist static
@@ -37,6 +37,7 @@ struct sdl_window_dimension
 
 
 global_variable bool32 Running;
+global_variable bool32 SoundIsPlaying;
 global_variable offscreen_SDL_buffer GlobalBackbuffer;
 
 internal sdl_window_dimension
@@ -224,31 +225,84 @@ void DynamicLoad()
     SDL_UnloadObject(LibHandle);
 }
 
-internal void
-SDLAudioCallback(void *UserData, uint8 *AudieData, int Length)
-{
-    memset(AudieData, 0, Length);
-}
-
-internal void
+internal SDL_AudioDeviceID
 SDLInitSDLAudio(int32 SamplesPerSecond)
 {
     // TODO(kjaa): Error handling in... any of this.
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
     {
-        SDL_AudioSpec AudioSettings = {};
-        AudioSettings.freq = SamplesPerSecond;
-        AudioSettings.format = AUDIO_S16LSB;
-        AudioSettings.channels = 2;
-        AudioSettings.samples = SamplesPerSecond * sizeof(int16);
-        AudioSettings.callback = &SDLAudioCallback;
-        SDL_OpenAudio(&AudioSettings, nullptr);
+
+        SDL_AudioSpec AudioSpecRequest = {}, AudioSpecReceive;
+        AudioSpecRequest.freq = SamplesPerSecond;
+        AudioSpecRequest.format = AUDIO_S16LSB;
+        AudioSpecRequest.channels = 2;
+        AudioSpecRequest.samples = 0;
+
+        SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
+                nullptr,
+                SDL_FALSE,
+                &AudioSpecRequest,
+                &AudioSpecReceive,
+                SDL_AUDIO_ALLOW_ANY_CHANGE);
+
+        if (AudioDeviceID != 0 && AudioSpecReceive.format == AudioSpecRequest.format) {
+            return AudioDeviceID;
+        }
+        else
+        {
+            // TODO(kjaa): Logging
+            printf("Audio Init failed");
+        }
     }
     else
     {
         // TODO(kjaa): Logging
         printf("Audio Init failed");
     }
+    return 0;
+}
+
+internal void
+WriteTone(SDL_AudioDeviceID AudioDeviceID) {
+    // TODO(kjaa): These are global state
+    int SamplesPerSecond = 48000;
+    int BytesPerSample = sizeof(int16) * 2;
+
+    // TODO(kjaa): Investigating doing _time_ sensitive write-ahead, instead of sample count.
+    int TargetQueueBytes = SamplesPerSecond * BytesPerSample;
+    int BytesToWrite = TargetQueueBytes - SDL_GetQueuedAudioSize(AudioDeviceID);
+
+    if (BytesToWrite)
+    {
+        int ToneHz = 256;
+        int16 ToneVolume = 3000;
+        uint32 RunningSampleIndex = 0;
+        int SquareWavePeriod = SamplesPerSecond / ToneHz;
+        int HalfSquareWavePeriod = SquareWavePeriod / 2;
+
+        void *SoundBuffer = malloc(BytesToWrite);
+        int16 *SampleOut = (int16 *) SoundBuffer;
+        int SampleCount = BytesToWrite / BytesPerSample;
+
+        for (int SampleIndex = 0;
+             SampleIndex < SampleCount;
+             ++SampleIndex)
+        {
+            int16 Sample = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? ToneVolume : -ToneVolume;
+            *SampleOut++ = Sample;
+            *SampleOut++ = Sample;
+        }
+
+        SDL_QueueAudio(AudioDeviceID, SoundBuffer, BytesToWrite);
+        free(SoundBuffer);
+
+        if (!SoundIsPlaying)
+        {
+            SDL_PauseAudioDevice(AudioDeviceID, 0);
+            SoundIsPlaying = true;
+        }
+    }
+
 }
 
 int main()
@@ -266,7 +320,7 @@ int main()
         // TODO(kjaa): Move audio init after window init
         if (Window)
         {
-            SDLInitSDLAudio(48000);
+            SDL_AudioDeviceID AudioDevice = SDLInitSDLAudio(48000);
 
             SDL_Renderer *Renderer = SDL_CreateRenderer(
                     Window,
@@ -300,8 +354,6 @@ int main()
                     SDL_Joystick *Joystick = SDL_GameControllerGetJoystick(ControllerHandles[OpenControllers]);
                     OpenControllers++;
                 }
-
-                SDL_PauseAudio(0);
 
                 int XOffset = 0;
                 int YOffset = 0;
@@ -370,6 +422,7 @@ int main()
                         };
                     }
 
+                    WriteTone(AudioDevice);
                     RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
                     SDLCopyBufferToRenderer(&GlobalBackbuffer, Renderer);
                     XOffset++;
