@@ -12,6 +12,8 @@ typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
+typedef int32 bool32;
+
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
@@ -34,7 +36,7 @@ struct sdl_window_dimension
 };
 
 
-global_variable bool Running;
+global_variable bool32 Running;
 global_variable offscreen_SDL_buffer GlobalBackbuffer;
 
 internal sdl_window_dimension
@@ -222,6 +224,33 @@ void DynamicLoad()
     SDL_UnloadObject(LibHandle);
 }
 
+internal void
+SDLAudioCallback(void *UserData, uint8 *AudieData, int Length)
+{
+    memset(AudieData, 0, Length);
+}
+
+internal void
+SDLInitSDLAudio(int32 SamplesPerSecond)
+{
+    // TODO(kjaa): Error handling in... any of this.
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
+    {
+        SDL_AudioSpec AudioSettings = {};
+        AudioSettings.freq = SamplesPerSecond;
+        AudioSettings.format = AUDIO_S16LSB;
+        AudioSettings.channels = 2;
+        AudioSettings.samples = SamplesPerSecond * sizeof(int16);
+        AudioSettings.callback = &SDLAudioCallback;
+        SDL_OpenAudio(&AudioSettings, nullptr);
+    }
+    else
+    {
+        // TODO(kjaa): Logging
+        printf("Audio Init failed");
+    }
+}
+
 int main()
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) == 0)
@@ -234,8 +263,11 @@ int main()
                 480,
                 SDL_WINDOW_RESIZABLE);
 
+        // TODO(kjaa): Move audio init after window init
         if (Window)
         {
+            SDLInitSDLAudio(48000);
+
             SDL_Renderer *Renderer = SDL_CreateRenderer(
                     Window,
                     -1,
@@ -269,6 +301,7 @@ int main()
                     OpenControllers++;
                 }
 
+                SDL_PauseAudio(0);
 
                 int XOffset = 0;
                 int YOffset = 0;
@@ -290,23 +323,25 @@ int main()
                         SDL_GameController *Controller = ControllerHandles[ControllerIndex];
                         if (SDL_GameControllerGetAttached(Controller))
                         {
-                            bool Up = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
-                            bool Down = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
-                            bool Left = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-                            bool Right = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-                            bool Start = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_START);
-                            bool Back = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_BACK);
-                            bool AButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_A);
-                            bool BButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_B);
-                            bool XButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_X);
-                            bool YButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_Y);
-                            bool LeftShoulder = SDL_GameControllerGetButton(Controller,
-                                                                            SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-                            bool RightShoulder = SDL_GameControllerGetButton(Controller,
-                                                                             SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
-                            bool LeftStick = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_LEFTSTICK);
-                            bool RightStick = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
-                            bool XBoxButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_GUIDE);
+                            bool32 Up = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+                            bool32 Down = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+                            bool32 Left = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+                            bool32 Right = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+                            bool32 Start = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_START);
+                            bool32 Back = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_BACK);
+                            bool32 AButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_A);
+                            bool32 BButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_B);
+                            bool32 XButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_X);
+                            bool32 YButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_Y);
+                            bool32 LeftShoulder = SDL_GameControllerGetButton(Controller,
+                                                                              SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+                            bool32 RightShoulder = SDL_GameControllerGetButton(Controller,
+                                                                               SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+                            bool32 LeftStick = SDL_GameControllerGetButton(Controller,
+                                                                           SDL_CONTROLLER_BUTTON_LEFTSTICK);
+                            bool32 RightStick = SDL_GameControllerGetButton(Controller,
+                                                                            SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+                            bool32 XBoxButton = SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_GUIDE);
 
                             int16 StickX = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTX);
                             int16 StickY = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTY);
@@ -350,6 +385,7 @@ int main()
             //TODO(kjaa): Handle CreateWindow failure
         }
         SDL_Quit();
+
     }
     else
     {
