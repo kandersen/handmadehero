@@ -4,6 +4,7 @@
 #include <dlfcn.h> // dynamic load of libs: dlopen
 // TODO(kjaa): Implement sine ourselves
 #include <cmath> // sine
+#include <x86intrin.h>
 
 #define Pi32 3.14159265358979f
 
@@ -321,8 +322,11 @@ WriteTone(sdl_sound_output *SoundOutput) {
 
 int main()
 {
+    uint64 PerfCounterFrequency = SDL_GetPerformanceFrequency();
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) == 0)
     {
+//        SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
         SDL_Window *Window = SDL_CreateWindow(
                 "Handmade Hero",
                 SDL_WINDOWPOS_UNDEFINED,
@@ -388,9 +392,13 @@ int main()
                 int XOffset = 0;
                 int YOffset = 0;
 
+
                 Running = true;
+                uint64 LastCounter = SDL_GetPerformanceCounter();
+                uint64 LastCycleCount = _rdtsc();
                 while (Running)
                 {
+
                     // NOTE(casey): Investigate performance implications of passing Event by value instead of pointer.
                     SDL_Event Event;
                     while (SDL_PollEvent(&Event))
@@ -443,6 +451,22 @@ int main()
                     WriteTone( &SoundOutput);
                     RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
                     SDLCopyBufferToRenderer(&GlobalBackbuffer, Renderer);
+
+                    uint64 EndCycleCount = _rdtsc();
+                    uint64 EndCounter = SDL_GetPerformanceCounter();
+
+                    uint64 CyclesElapsed = EndCycleCount - LastCycleCount;
+                    uint64 CounterElapsed = EndCounter - LastCounter;
+                    real64 MSPerFrame = (1000.0f * (real64)CounterElapsed) / (real64)PerfCounterFrequency;
+                    real64 FPS = (real64)PerfCounterFrequency / (real64)CounterElapsed;
+                    uint64 MCPF = CyclesElapsed / (1000 * 1000);
+
+                    char Buffer[256];
+                    snprintf(Buffer, sizeof(Buffer), "%.02fms/f, %.02fFPS, %lldmc/f\n", MSPerFrame, FPS, MCPF);
+                    printf(Buffer);
+
+                    LastCycleCount = EndCycleCount;
+                    LastCounter = EndCounter;
                 }
             }
             else
