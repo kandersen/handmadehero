@@ -1,10 +1,4 @@
-
-#include <SDL.h>
-#include <sys/mman.h> // mmap/munmap
-#include <dlfcn.h> // dynamic load of libs: dlopen
-// TODO(kjaa): Implement sine ourselves
-#include <cmath> // sine
-#include <x86intrin.h>
+#include <stdint.h>
 
 #define Pi32 3.14159265358979f
 
@@ -24,8 +18,19 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
-typedef float_t real32;
-typedef double_t real64;
+typedef float real32;
+typedef double real64;
+
+// TODO(kjaa): Implement sine ourselves
+#include <cmath> // sine
+
+#include "handmade.cpp"
+
+#include <SDL.h>
+#include <sys/mman.h> // mmap/munmap
+#include <dlfcn.h> // dynamic load of libs: dlopen
+#include <x86intrin.h>
+
 
 struct offscreen_SDL_buffer
 {
@@ -45,6 +50,7 @@ struct sdl_window_dimension
 
 struct sdl_sound_output {
     SDL_AudioDeviceID DeviceID;
+    int16 *Samples;
     int SamplesPerSecond;
     int BytesPerSample;
     int LatencySampleCount;
@@ -70,30 +76,6 @@ SDLGetWindowSize(SDL_Window *Window)
     sdl_window_dimension Result = {};
     SDL_GetWindowSize(Window, &Result.Width, &Result.Height);
     return Result;
-}
-
-internal void
-RenderWeirdGradient(offscreen_SDL_buffer *Buffer, int XOffset, int YOffset)
-{
-    uint8 *Row = (uint8 *) Buffer->Memory;
-    for (int Y = 0;
-         Y < Buffer->Height;
-         Y++)
-    {
-        uint32 *Pixel = (uint32 *) Row;
-        for (int X = 0;
-             X < Buffer->Width;
-             X++)
-        {
-            uint8 Red = 0;
-            uint8 Green = Y + YOffset;
-            uint8 Blue = X + XOffset;
-            *Pixel = (Red << 16) | (Green << 8) | Blue;
-            Pixel++;
-        }
-
-        Row += Buffer->Pitch;
-    }
 }
 
 internal void
@@ -283,41 +265,14 @@ SDLInitSDLAudio(sdl_sound_output *SoundOutput)
     }
 }
 
-
 internal void
-WriteTone(sdl_sound_output *SoundOutput) {
+SDLFillSoundBuffer(sdl_sound_output *SoundOutput, uint32 BytesToWrite, game_sound_output_buffer *SoundBuffer) {
+    SDL_QueueAudio(SoundOutput->DeviceID, SoundBuffer->Samples, BytesToWrite);
 
-    // TODO(kjaa): Investigating doing _time_ sensitive write-ahead, instead of sample count.
-    int TargetQueueBytes = SoundOutput->LatencySampleCount * SoundOutput->BytesPerSample;
-    uint32 BytesToWrite = TargetQueueBytes - SDL_GetQueuedAudioSize(SoundOutput->DeviceID);
-
-    if (BytesToWrite)
-    {
-        void *SoundBuffer = malloc(BytesToWrite);
-        int16 *SampleOut = (int16 *) SoundBuffer;
-        uint32 SampleCount = BytesToWrite / SoundOutput->BytesPerSample;
-
-        for (uint SampleIndex = 0;
-             SampleIndex < SampleCount;
-             ++SampleIndex)
-        {
-            SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
-            real32 SineValue = sinf(SoundOutput->tSine);
-            int16 Sample = (int16)(SineValue * (real32)SoundOutput->ToneVolume);
-            *SampleOut++ = Sample;
-            *SampleOut++ = Sample;
-        }
-
-        SDL_QueueAudio(SoundOutput->DeviceID, SoundBuffer, BytesToWrite);
-        free(SoundBuffer);
-
-        if (!SoundIsPlaying)
-        {
-            SDL_PauseAudioDevice(SoundOutput->DeviceID, 0);
-            SoundIsPlaying = true;
-        }
+    if (!SoundIsPlaying) {
+        SDL_PauseAudioDevice(SoundOutput->DeviceID, 0);
+        SoundIsPlaying = true;
     }
-
 }
 
 int main()
@@ -341,6 +296,12 @@ int main()
 
             sdl_sound_output SoundOutput = {};
             SoundOutput.SamplesPerSecond = 48000;
+            SoundOutput.Samples = (int16 *)mmap(nullptr,
+                                                SoundOutput.SamplesPerSecond,
+                                                PROT_READ | PROT_WRITE,
+                                                MAP_ANONYMOUS | MAP_PRIVATE,
+                                                -1,
+                                                0);
             SoundOutput.BytesPerSample = sizeof(int16) * 2;
             SoundOutput.ToneVolume = 3000;
             // TODO(kjaa): Can this be dynamic instead of hardwired?
@@ -448,9 +409,24 @@ int main()
                         };
                     }
 
-                    WriteTone( &SoundOutput);
-                    RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
+                    int TargetQueueBytes = SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample;
+                    uint32 BytesToWrite = TargetQueueBytes - SDL_GetQueuedAudioSize(SoundOutput.DeviceID);
+                    game_sound_output_buffer SoundBuffer = {};
+                    SoundBuffer.SamplesPerSecond = SoundOutput.SamplesPerSecond;
+                    SoundBuffer.SampleCount = BytesToWrite / SoundOutput.BytesPerSample;
+                    SoundBuffer.Samples = SoundOutput.Samples;
+
+                    game_offscreen_buffer Buffer = {};
+                    Buffer.Memory = GlobalBackbuffer.Memory;
+                    Buffer.Width = GlobalBackbuffer.Width;
+                    Buffer.Height = GlobalBackbuffer.Height;
+                    Buffer.Pitch = GlobalBackbuffer.Pitch;
+
+                    GameUpdateAndRender(&Buffer, &SoundBuffer, SoundOutput.ToneHz);
+
                     SDLCopyBufferToRenderer(&GlobalBackbuffer, Renderer);
+                    SDLFillSoundBuffer(&SoundOutput, BytesToWrite, &SoundBuffer);
+
 
                     uint64 EndCycleCount = _rdtsc();
                     uint64 EndCounter = SDL_GetPerformanceCounter();
@@ -461,10 +437,11 @@ int main()
                     real64 FPS = (real64)PerfCounterFrequency / (real64)CounterElapsed;
                     uint64 MCPF = CyclesElapsed / (1000 * 1000);
 
-                    char Buffer[256];
+#if 0
+                     char Buffer[256];
                     snprintf(Buffer, sizeof(Buffer), "%.02fms/f, %.02fFPS, %lldmc/f\n", MSPerFrame, FPS, MCPF);
                     printf(Buffer);
-
+#endif
                     LastCycleCount = EndCycleCount;
                     LastCounter = EndCounter;
                 }
