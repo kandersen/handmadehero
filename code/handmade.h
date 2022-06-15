@@ -7,7 +7,7 @@
 
 // NOTE(casey): Services that the platform layer provides to the game
 
-  
+
 // NOTE(casey): Services that the game provides to the platform layer
 
 struct game_offscreen_buffer
@@ -27,6 +27,7 @@ struct game_sound_output_buffer
 };
 
 internal void
-GameUpdateAndRender(game_offscreen_buffer *Buffer, game_sound_output_buffer *SoundBuffer, int32 ToneHz);
+GameUpdateAndRender(game_offscreen_buffer *Buffer,
+                    game_sound_output_buffer *SoundBuffer);
 
 #endif //HANDMADE_H

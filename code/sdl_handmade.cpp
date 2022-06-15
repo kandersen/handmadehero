@@ -31,40 +31,7 @@ typedef double real64;
 #include <dlfcn.h> // dynamic load of libs: dlopen
 #include <x86intrin.h>
 
-
-struct offscreen_SDL_buffer
-{
-    // NOTE(casey): Pixels are always 32-bits wide, Memory Order BB GG RR XX
-    SDL_Texture *Texture;
-    void *Memory;
-    int Width;
-    int Height;
-    int Pitch;
-};
-
-struct sdl_window_dimension
-{
-    int Width;
-    int Height;
-};
-
-struct sdl_sound_output {
-    SDL_AudioDeviceID DeviceID;
-    int16 *Samples;
-    int SamplesPerSecond;
-    int BytesPerSample;
-    int LatencySampleCount;
-    int ToneHz;
-    real32 WavePeriod;
-    int16 ToneVolume;
-    real32 tSine;
-};
-
-internal void
-SetToneHerz(sdl_sound_output *SoundOutput, int ToneHz) {
-    SoundOutput->ToneHz = ToneHz;
-    SoundOutput->WavePeriod = (real32)SoundOutput->SamplesPerSecond / (real32)SoundOutput->ToneHz;
-}
+#include "sdl_handmade.h"
 
 global_variable bool32 Running;
 global_variable bool32 SoundIsPlaying;
@@ -204,6 +171,7 @@ SDLHandleEvent(SDL_Event *Event)
                 }
                 else if (KeyCode == SDLK_DOWN)
                 {
+
                 }
                 else if (KeyCode == SDLK_RIGHT)
                 {
@@ -303,10 +271,8 @@ int main()
                                                 -1,
                                                 0);
             SoundOutput.BytesPerSample = sizeof(int16) * 2;
-            SoundOutput.ToneVolume = 3000;
             // TODO(kjaa): Can this be dynamic instead of hardwired?
             SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 10;
-            SetToneHerz(&SoundOutput, 256);
 
             SDLInitSDLAudio(&SoundOutput);
 
@@ -349,10 +315,6 @@ int main()
 
 
                 SoundIsPlaying = false;
-
-                int XOffset = 0;
-                int YOffset = 0;
-
 
                 Running = true;
                 uint64 LastCounter = SDL_GetPerformanceCounter();
@@ -397,11 +359,6 @@ int main()
 
                             int16 StickX = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTX);
                             int16 StickY = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTY);
-
-                            XOffset += StickX / (4096 * 2);
-                            YOffset += StickY / (4096 * 2);
-
-                            SetToneHerz(&SoundOutput, 512 - (int)(256.0f*((real32)StickY / 30000.0f)));
                         }
                         else
                         {
@@ -422,7 +379,7 @@ int main()
                     Buffer.Height = GlobalBackbuffer.Height;
                     Buffer.Pitch = GlobalBackbuffer.Pitch;
 
-                    GameUpdateAndRender(&Buffer, &SoundBuffer, SoundOutput.ToneHz);
+                    GameUpdateAndRender(&Buffer, &SoundBuffer);
 
                     SDLCopyBufferToRenderer(&GlobalBackbuffer, Renderer);
                     SDLFillSoundBuffer(&SoundOutput, BytesToWrite, &SoundBuffer);
