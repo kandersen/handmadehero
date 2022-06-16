@@ -26,7 +26,7 @@ typedef double real64;
 
 #include "handmade.cpp"
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include <sys/mman.h> // mmap/munmap
 #include <dlfcn.h> // dynamic load of libs: dlopen
 #include <x86intrin.h>

@@ -1,0 +1,19 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "./mac_build.sh",
+            "type": "shell",
+            "presentation": {
+                "echo": true,
+                "focus": true,
+                "revealProblems": "onProblem",
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": true
+            },
+            "problemMatcher": "$gcc"
+        },
+    ]
+}
