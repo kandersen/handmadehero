@@ -3,7 +3,7 @@
         {
             "name": "Mac",
             "includePath": [
-                "/usr/local/include/**",
+                "/usr/local/include/SDL2",
                 "${workspaceFolder}/**"
             ],            
             "defines": [],
@@ -11,7 +11,12 @@
             "compilerPath": "/usr/bin/clang++",
             "cStandard": "gnu17",
             "cppStandard": "gnu++17",
-            "intelliSenseMode": "macos-clang-x64"
+            "intelliSenseMode": "macos-clang-x64",
+            "browse": {
+                "path": [
+                    "/usr/local/include/SDL2"
+                ]
+            }
         }
     ],
     "version": 4
