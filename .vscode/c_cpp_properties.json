@@ -6,12 +6,16 @@
                 "/usr/local/include/SDL2",
                 "${workspaceFolder}/**"
             ],            
-            "defines": [],
+            "defines": [
+                "HANDMADE_INTERNAL=1",
+                "HANDMADE_SLOW=1"
+            ],
             "macFrameworkPath": [],
             "compilerPath": "/usr/bin/clang++",
             "cStandard": "gnu17",
             "cppStandard": "gnu++17",
             "intelliSenseMode": "macos-clang-x64",
+            
             "browse": {
                 "path": [
                     "/usr/local/include/SDL2"

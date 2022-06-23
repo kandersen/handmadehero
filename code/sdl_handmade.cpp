@@ -29,9 +29,103 @@ typedef double real64;
 #include <SDL.h>
 #include <sys/mman.h> // mmap/munmap
 #include <dlfcn.h> // dynamic load of libs: dlopen
-#include <x86intrin.h>
+#include <x86intrin.h> //rdtsc
+#include <sys/types.h> // file IO
+#include <sys/stat.h> // file IO
+#include <fcntl.h> // file open
+#include <unistd.h> // file stat
 
 #include "sdl_handmade.h"
+
+#if HANDMADE_INTERNAL
+inline uint32
+SafeTruncateUInt64(uint64 Value)
+{
+    Assert(Value <= 0xFFFFFFFF);
+    uint32 Result = (uint32) Value;
+    return Result;
+}
+
+internal debug_read_file_result
+DEBUGPlatformReadEntireFile(char *FileName)
+{
+    debug_read_file_result Result = {};
+    int FileHandle = open(FileName, O_RDONLY);
+    if (FileHandle == -1) 
+    {
+        return Result;
+    }
+
+    struct stat FileStatus;
+    if (fstat(FileHandle, &FileStatus) == -1)
+    {
+        close(FileHandle);
+        return Result;
+    }
+
+    Result.ContentSize = SafeTruncateUInt64(FileStatus.st_size);
+    Result.Content = malloc(Result.ContentSize);
+    if (!Result.Content) {
+        Result.ContentSize = 0;
+        close(FileHandle);
+        return Result;
+    }
+
+    uint32 BytesToRead = Result.ContentSize;
+    uint8 *NextByteLocation = (uint8*)Result.Content;
+    while (BytesToRead)
+    {
+        uint32 BytesRead = read(FileHandle, NextByteLocation, BytesToRead);
+        if (BytesRead == -1)
+        {
+            free(Result.Content);
+            Result.Content = 0;
+            Result.ContentSize = 0;
+            close(FileHandle);
+            return Result;            
+        }
+        BytesToRead -= BytesRead;
+        NextByteLocation += BytesRead;
+    }
+
+    close(FileHandle);
+    return Result;
+}
+
+internal void
+DEBUGPlatformFreeFileMemory(void *Memory)
+{
+    free(Memory);
+}
+
+internal bool32
+DEBUGPlatformWriteEntireFile(char *FileName, uint32 MemorySize, void *Memory)
+{
+    int FileHandle = open(FileName, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (FileHandle == -1)
+    {
+        return false;
+    }
+
+    uint32 BytesToWrite = MemorySize;
+    uint8 *NextByteLocation = (uint8*)Memory;
+    while (BytesToWrite)
+    {
+        uint32 BytesWritten = write(FileHandle, NextByteLocation, BytesToWrite);
+        if (BytesWritten)
+        {
+            close(FileHandle);
+            return false;
+        }
+        BytesToWrite -= BytesWritten;
+        NextByteLocation += BytesWritten;
+    }
+
+    close(FileHandle);
+    return true;
+}
+#else
+#endif
 
 global_variable bool32 Running;
 global_variable bool32 SoundIsPlaying;

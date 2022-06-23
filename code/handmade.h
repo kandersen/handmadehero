@@ -32,6 +32,23 @@
 
 // NOTE(casey): Services that the platform layer provides to the game
 
+#if HANDMADE_INTERNAL
+struct debug_read_file_result
+{
+    uint32 ContentSize;
+    void* Content;
+};
+
+internal debug_read_file_result
+DEBUGPlatformReadEntireFile(char *FileName);
+
+internal void
+DEBUGPlatformFreeFileMemory(void *Memory);
+
+internal bool32
+DEBUGPlatformWriteEntireFile(char *FileName, uint32 MemorySize, void *Memory);
+#else
+#endif
 
 // NOTE(casey): Services that the game provides to the platform layer
 

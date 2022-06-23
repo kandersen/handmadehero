@@ -7,7 +7,7 @@
             "program": "${workspaceFolder}/build/handmadehero",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build",
+            "cwd": "${workspaceFolder}/data",
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",

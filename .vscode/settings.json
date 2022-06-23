@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "cmath": "cpp"
+        "cmath": "cpp",
+        "ios": "cpp",
+        "locale": "cpp"
     }
 }
