@@ -38,9 +38,9 @@ RenderWeirdGradient(game_offscreen_buffer *Buffer, int32 XOffset, int32 YOffset)
              X++)
         {
             uint8 Red = 0;
-            uint8 Green = Y + YOffset;
-            uint8 Blue = X + XOffset;
-            *Pixel = (Red << 16) | (Green << 8) | Blue;
+            uint8 Green = (uint8) (Y + YOffset);
+            uint8 Blue = (uint8) (X + XOffset);
+            *Pixel = ((uint32) Red << 16) | ((uint32) Green << 8) | (uint32) Blue;
             Pixel++;
         }
 
@@ -66,21 +66,42 @@ GameUpdateAndRender(game_memory *Memory,
         Memory->IsInitialized = true;
     }
 
-    game_controller_input Input0 = Input->Controllers[0];
-    if (Input0.IsAnalog)
+    for (int ControllerIndex = 0;
+         ControllerIndex < ArrayCount(Input->Controllers);
+         ++ControllerIndex) 
     {
-        GameState->ToneHz = 256 + (int32)(120.0f * (Input0.EndX));
-        GameState->YOffset += (int32)(4.0f * Input0.EndY);  
-    }
-    else
-    {
-      
+        game_controller_input Controller = Input->Controllers[ControllerIndex];
+        if (Controller.IsAnalog)
+        {
+            GameState->ToneHz = 256 + (int32)(120.0f * (Controller.StickAverageX));
+            GameState->YOffset += (int32)(4.0f * Controller.StickAverageY);  
+        }
+        else
+        {
+            if (Controller.MoveDown.EndedDown) 
+            {
+                GameState->YOffset += 1;
+            }
+            if (Controller.MoveUp.EndedDown)
+            {
+                GameState->YOffset -= 1;
+            }
+            if (Controller.MoveLeft.EndedDown)
+            {
+                GameState->XOffset -= 1;
+            }
+            if (Controller.MoveRight.EndedDown)
+            {
+                GameState->XOffset += 1;
+            } 
+        }
+
+        if (Controller.ActionDown.EndedDown)
+        {
+            GameState->XOffset += 1;
+        }
     }
 
-    if (Input0.A.EndedDown)
-    {
-        GameState->XOffset += 1;
-    }
   
     GameOutputSound(SoundBuffer, GameState->ToneHz);
     RenderWeirdGradient(Buffer, GameState->XOffset, GameState->YOffset);

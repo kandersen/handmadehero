@@ -39,7 +39,7 @@ typedef double real64;
 
 #if HANDMADE_INTERNAL
 inline uint32
-SafeTruncateUInt64(uint64 Value)
+SafeTruncateUInt64(int64 Value)
 {
     Assert(Value <= 0xFFFFFFFF);
     uint32 Result = (uint32) Value;
@@ -75,7 +75,7 @@ DEBUGPlatformReadEntireFile(char *FileName)
     uint8 *NextByteLocation = (uint8*)Result.Content;
     while (BytesToRead)
     {
-        uint32 BytesRead = read(FileHandle, NextByteLocation, BytesToRead);
+        ssize_t BytesRead = read(FileHandle, NextByteLocation, BytesToRead);
         if (BytesRead == -1)
         {
             free(Result.Content);
@@ -183,101 +183,112 @@ SDLResizeBuffer(offscreen_SDL_buffer *Buffer, uint WindowID, int NewWidth, int N
                           0);
 }
 
+internal void
+SDLProcessKeyPress(game_button_state *NewState,
+                   bool32 IsDown)
+{
+    Assert(NewState->EndedDown != IsDown);
+    NewState->EndedDown = IsDown;
+    ++NewState->HalfTransitionCount;
+} 
 
 internal void
-SDLHandleEvent(SDL_Event *Event)
+SDLHandleEvents(game_controller_input *KeyboardController)
 {
-    switch (Event->type)
+                            // NOTE(casey): Investigate performance implications of passing Event by value instead of pointer.
+    SDL_Event Event;
+    while (SDL_PollEvent(&Event))
     {
-        case SDL_QUIT:
+        switch (Event.type)
         {
-            Running = false;
-            break;
-        }
-
-        case SDL_WINDOWEVENT:
-        {
-            switch (Event->window.event)
+            case SDL_QUIT:
             {
-                case SDL_WINDOWEVENT_RESIZED:
-                {
-                    printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n", Event->window.data1, Event->window.data2);
-                    break;
-                }
+                Running = false;
+                break;
+            }
 
-                case SDL_WINDOWEVENT_CLOSE:
+            case SDL_WINDOWEVENT:
+            {
+                switch (Event.window.event)
                 {
-                    Running = false;
-                    break;
-                }
+                    case SDL_WINDOWEVENT_RESIZED:
+                    {
+                        break;
+                    }
 
-                case SDL_WINDOWEVENT_EXPOSED:
+                    case SDL_WINDOWEVENT_CLOSE:
+                    {
+                        Running = false;
+                        break;
+                    }
+
+                    case SDL_WINDOWEVENT_EXPOSED:
+                    {
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case SDL_KEYDOWN:
+            case SDL_KEYUP:
+            {
+                SDL_Keycode KeyCode = Event.key.keysym.sym;
+                bool32 WasDown = Event.key.state == SDL_RELEASED || Event.key.repeat != 0;
+                bool32 IsDown = Event.key.state == SDL_PRESSED;
+
+                if (WasDown != IsDown)
                 {
-                    printf("SDL_WINDOWEVENT_EXPOSED\n");
-                    break;
+                    if (KeyCode == SDLK_w)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->MoveUp, IsDown);
+                    }
+                    else if (KeyCode == SDLK_a)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->MoveLeft, IsDown);
+                    }
+                    else if (KeyCode == SDLK_s)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->MoveDown, IsDown);
+                    }
+                    else if (KeyCode == SDLK_d)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->MoveRight, IsDown);
+                    }
+                    else if (KeyCode == SDLK_q)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->LeftShoulder, IsDown);
+                    }
+                    else if (KeyCode == SDLK_e)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->RightShoulder, IsDown);
+                    }
+                    else if (KeyCode == SDLK_UP)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->ActionUp, IsDown);
+                    }
+                    else if (KeyCode == SDLK_LEFT)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->ActionLeft, IsDown);
+                    }
+                    else if (KeyCode == SDLK_DOWN)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->ActionDown, IsDown);
+                    }
+                    else if (KeyCode == SDLK_RIGHT)
+                    {
+                       SDLProcessKeyPress(&KeyboardController->ActionRight, IsDown);
+                    }
+                    else if (KeyCode == SDLK_ESCAPE)
+                    {
+                        Running = false;
+                    }
+                    else if (KeyCode == SDLK_SPACE)
+                    {
+                    }
                 }
             }
             break;
-        }
-
-        case SDL_KEYDOWN:
-        case SDL_KEYUP:
-        {
-            SDL_Keycode KeyCode = Event->key.keysym.sym;
-            bool32 WasDown = Event->key.state == SDL_RELEASED || Event->key.repeat != 0;
-            bool32 IsDown = Event->key.state == SDL_PRESSED;
-
-            if (WasDown != IsDown)
-            {
-                if (KeyCode == SDLK_w)
-                {
-                    printf("W: ");
-                    if (IsDown)
-                    {
-                        printf("IsDown ");
-                    }
-                    if (WasDown)
-                    {
-                        printf("WasDown ");
-                    }
-                    printf("\n");
-                }
-                else if (KeyCode == SDLK_a)
-                {
-                }
-                else if (KeyCode == SDLK_s)
-                {
-                }
-                else if (KeyCode == SDLK_d)
-                {
-                }
-                else if (KeyCode == SDLK_q)
-                {
-                }
-                else if (KeyCode == SDLK_e)
-                {
-                }
-                else if (KeyCode == SDLK_UP)
-                {
-                }
-                else if (KeyCode == SDLK_LEFT)
-                {
-                }
-                else if (KeyCode == SDLK_DOWN)
-                {
-
-                }
-                else if (KeyCode == SDLK_RIGHT)
-                {
-                }
-                else if (KeyCode == SDLK_ESCAPE)
-                {
-                    Running = false;
-                }
-                else if (KeyCode == SDLK_SPACE)
-                {
-                }
-            }
         }
     }
 }
@@ -338,21 +349,37 @@ SDLFillSoundBuffer(sdl_sound_output *SoundOutput, uint32 BytesToWrite, game_soun
 }
 
 internal void
-SDLProcessDigitalButton(SDL_GameController *Controller,
-                        SDL_GameControllerButton Button,
+SDLProcessDigitalButton(bool32 Value,
                         game_button_state *OldState,
                         game_button_state *NewState)
 {
-    NewState->EndedDown = SDL_GameControllerGetButton(Controller, Button);
+    NewState->EndedDown = Value;
     NewState->HalfTransitionCount = (OldState->EndedDown != NewState->EndedDown) ? 1 : 0;
 }   
 
+internal real32
+SDLProcessControllerStick(SDL_GameController *Controller, SDL_GameControllerAxis Axis, int16 Deadzone)
+{
+    real32 Result = 0.0f;
+
+    int16 Value = SDL_GameControllerGetAxis(Controller, Axis);
+    if (Value < -Deadzone) {
+        Result = (real32)Value / 32768.0f;
+    } else if (Value > Deadzone) {
+        Result = (real32)Value / 32767.0f;
+    }
+
+    return Result;
+}
+
 int main()
 {
+#if 0
     uint64 PerfCounterFrequency = SDL_GetPerformanceFrequency();
-
-     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) == 0)
+#endif 
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) == 0)
     {
+
 //        SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
         SDL_Window *Window = SDL_CreateWindow(
                 "Handmade Hero",
@@ -381,7 +408,6 @@ int main()
                                                 -1,
                                                 0);
             GameMemory.TransientStorage = (uint8 *)GameMemory.PermanentStorage + GameMemory.PermanentStorageSize;
-
 
             sdl_sound_output SoundOutput = {};
             SoundOutput.SamplesPerSecond = 48000;
@@ -419,10 +445,10 @@ int main()
                     // TODO(kjaa): This is not robust to controller changes. Handle
                     //   SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED and
                     //   SDL_CONTROLLERDEVICEREMAPPED events in the event handler.
-    #define MAX_CONTROLLERS 4
                     SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
+
                     int MaxJoysticks = SDL_NumJoysticks();
-                    int OpenControllers = 0;
+                    int OpenControllers = 1;
                     for (int JoystickIndex = 0; JoystickIndex < MaxJoysticks; JoystickIndex++)
                     {
                         if (!SDL_IsGameController(JoystickIndex))
@@ -449,17 +475,24 @@ int main()
                     uint64 LastCycleCount = _rdtsc();
                     while (Running)
                     {
-                        
-                        // NOTE(casey): Investigate performance implications of passing Event by value instead of pointer.
-                        SDL_Event Event;
-                        while (SDL_PollEvent(&Event))
+                        // NOTE(kjaa): Zero the new keyboard controller transition count, and preserve EndedDown
+                        game_controller_input *OldKeyboardController = &OldInput->Controllers[0];                        
+                        game_controller_input *NewKeyboardController = &NewInput->Controllers[0];
+                        *NewKeyboardController = {};
+                        NewKeyboardController->IsConnected = true;
+                        for (int ButtonIndex = 0;
+                             ButtonIndex < ArrayCount(NewKeyboardController->Buttons);
+                             ++ButtonIndex)
                         {
-                            SDLHandleEvent(&Event);
+                            NewKeyboardController->Buttons[ButtonIndex].EndedDown =
+                                OldKeyboardController->Buttons[ButtonIndex].EndedDown;
                         }
+
+                        SDLHandleEvents(NewKeyboardController);
 
                         // TODO(casey): Should we poll this more frequently (kjaa: than the render loop...?)
                         // TODO(kjaa): handle OpenControllers higher than the hardcoded count in game_input.Controllers
-                        for (int ControllerIndex = 0;
+                        for (int ControllerIndex = 1;
                             ControllerIndex < OpenControllers;
                             ControllerIndex++)
                         {                     
@@ -469,80 +502,96 @@ int main()
                             
                             if (SDL_GameControllerGetAttached(Controller))
                             {
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_DPAD_UP,
-                                                        &OldController->Up,
-                                                        &NewController->Up);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-                                                        &OldController->Down,
-                                                        &NewController->Down);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-                                                        &OldController->Left,
-                                                        &NewController->Left);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-                                                        &OldController->Right,
-                                                        &NewController->Right);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_A,
-                                                        &OldController->A,
-                                                        &NewController->A);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_B,
-                                                        &OldController->B,
-                                                        &NewController->B);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_X,
-                                                        &OldController->X,
-                                                        &NewController->X);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_Y,
-                                                        &OldController->Y,
-                                                        &NewController->Y);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-                                                        &OldController->LeftShoulder,
-                                                        &NewController->LeftShoulder);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-                                                        &OldController->RightShoulder,
-                                                        &NewController->RightShoulder);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_START,
-                                                        &OldController->Start,
-                                                        &NewController->Start);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_BACK,
-                                                        &OldController->Back,
-                                                        &NewController->Back);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_GUIDE,
-                                                        &OldController->Guide,
-                                                        &NewController->Guide);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_LEFTSTICK,
-                                                        &OldController->LeftStick,
-                                                        &NewController->LeftStick);
-                                SDLProcessDigitalButton(Controller,                                                   
-                                                        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-                                                        &OldController->RightStick,
-                                                        &NewController->RightStick);
+                                NewController->IsConnected = true;
 
                                 NewController->IsAnalog = true;
+                                #define CONTROLLER_DEADZONE 7849
+                                NewController->StickAverageX = SDLProcessControllerStick(Controller, 
+                                                                     SDL_CONTROLLER_AXIS_LEFTX,
+                                                                     CONTROLLER_DEADZONE);
+                                NewController->StickAverageY = SDLProcessControllerStick(Controller, 
+                                                                     SDL_CONTROLLER_AXIS_LEFTY,
+                                                                     CONTROLLER_DEADZONE);
 
-                                NewController->StartX = OldController->EndX;
-                                NewController->StartY = OldController->EndY;
-                                                        
-                                int16 StickX = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTX);
-                                int16 StickY = SDL_GameControllerGetAxis(Controller, SDL_CONTROLLER_AXIS_LEFTY);
+                                if (SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_UP))
+                                {
+                                    NewController->StickAverageY = 1.0f;
+                                }
+                                if (SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN))
+                                {
+                                    NewController->StickAverageY = -1.0f;
+                                }
+                                if (SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT))
+                                {
+                                    NewController->StickAverageX = -1.0f;
+                                }
+                                if (SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
+                                {
+                                    NewController->StickAverageX = 1.0f;
+                                }
+                                
 
-                                NewController->EndX = (real32)StickX / ((StickX < 0) ? 32768.0f : 32767.0f);
-                                NewController->MinX = NewController->MaxX = NewController->EndX;
 
-                                NewController->EndY = (real32) StickY / ((StickY < 0) ? 32768.0f : 32767.0f);
-                                NewController->MinY = NewController->MaxY = NewController->EndY;
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_UP),
+                                                        &OldController->MoveUp,
+                                                        &NewController->MoveUp);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN),
+                                                        &OldController->MoveDown,
+                                                        &NewController->MoveDown);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT),
+                                                        &OldController->MoveLeft,
+                                                        &NewController->MoveLeft);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT),
+                                                        &OldController->MoveRight,
+                                                        &NewController->MoveRight);                                                                    
+                             
+                                SDLProcessDigitalButton(NewController->StickAverageX < 0.5f,
+                                                        &OldController->MoveLeft,
+                                                        &NewController->MoveLeft);
+                                SDLProcessDigitalButton(NewController->StickAverageX > 0.5f,
+                                                        &OldController->MoveRight,
+                                                        &NewController->MoveRight);
+                                SDLProcessDigitalButton(NewController->StickAverageY < 0.5f,
+                                                        &OldController->MoveDown,
+                                                        &NewController->MoveDown);
+                                SDLProcessDigitalButton(NewController->StickAverageX > 0.5f,
+                                                        &OldController->MoveUp,
+                                                        &NewController->MoveUp);
+                                
+
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_A),
+                                                        &OldController->ActionDown,
+                                                        &NewController->ActionDown);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_B),
+                                                        &OldController->ActionRight,
+                                                        &NewController->ActionRight);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_X),
+                                                        &OldController->ActionLeft,
+                                                        &NewController->ActionLeft);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_Y),
+                                                        &OldController->ActionUp,
+                                                        &NewController->ActionUp);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER),
+                                                        &OldController->LeftShoulder,
+                                                        &NewController->LeftShoulder);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER),
+                                                        &OldController->RightShoulder,
+                                                        &NewController->RightShoulder);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_START),
+                                                        &OldController->Start,
+                                                        &NewController->Start);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_BACK),
+                                                        &OldController->Back,
+                                                        &NewController->Back);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_GUIDE),
+                                                        &OldController->Guide,
+                                                        &NewController->Guide);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_LEFTSTICK),
+                                                        &OldController->LeftStick,
+                                                        &NewController->LeftStick);
+                                SDLProcessDigitalButton(SDL_GameControllerGetButton(Controller, SDL_CONTROLLER_BUTTON_RIGHTSTICK),
+                                                        &OldController->RightStick,
+                                                        &NewController->RightStick);
                             }
                             else
                             {
@@ -571,18 +620,16 @@ int main()
 
                         uint64 EndCycleCount = _rdtsc();
                         uint64 EndCounter = SDL_GetPerformanceCounter();
-
+#if 0
                         uint64 CyclesElapsed = EndCycleCount - LastCycleCount;
                         uint64 CounterElapsed = EndCounter - LastCounter;
                         real64 MSPerFrame = (1000.0f * (real64)CounterElapsed) / (real64)PerfCounterFrequency;
                         real64 FPS = (real64)PerfCounterFrequency / (real64)CounterElapsed;
                         uint64 MCPF = CyclesElapsed / (1000 * 1000);
-
-    #if 0
-                        char Buffer[256];
-                        snprintf(Buffer, sizeof(Buffer), "%.02fms/f, %.02fFPS, %lldmc/f\n", MSPerFrame, FPS, MCPF);
-                        printf(Buffer);
-    #endif
+                        char PBuffer[256];
+                        snprintf(PBuffer, sizeof(PBuffer), "%.02fms/f, %.02fFPS, %lldmc/f\n", MSPerFrame, FPS, MCPF);
+                        printf("%s", PBuffer);
+#endif
                         LastCycleCount = EndCycleCount;
                         LastCounter = EndCounter;
 
